@@ -6,46 +6,65 @@ Minimum functionality:
 - no backend database
 - implement via GPT assistant API
 - double-click to start chatting, and close to stop
+
+5/17/2024: Updated to Assistant API v2
 '''
 
 import time
 from openai import OpenAI
+from typing_extensions import override
+from openai import AssistantEventHandler
 
 # connect to openai
 client = OpenAI()
 thread = client.beta.threads.create()
 
+# retrieve assistant
+assistant = client.beta.assistants.retrieve("asst_1xW83AWPDb52ganvqZsCMius")
+
 def ask_assistant(user_input):
-    # user input
+    # create thread
+    thread = client.beta.threads.create()
+
+    # add user input as message
     message = client.beta.threads.messages.create(
         thread_id = thread.id,
         role = "user",
         content = user_input
     )
 
-    #thread_messages = client.beta.threads.messages.list(thread.id)
-    #print(thread_messages.data)
-
-    # run assistant
-    run = client.beta.threads.runs.create(
-        thread_id = thread.id,
-        assistant_id = "asst_1xW83AWPDb52ganvqZsCMius"
-    )
-
-    # check run status
-    while (run.status != "completed"):
-        time.sleep(0.5)
-        run = client.beta.threads.runs.retrieve(
-            thread_id = thread.id,
-            run_id = run.id
-        )
-
-    # get assistant response
-    response = client.beta.threads.messages.list(
-        thread_id = thread.id
-    )
-
-    return response.data[0].content[0].text.value
+    class EventHandler(AssistantEventHandler):    
+        @override
+        def on_text_created(self, text) -> None:
+            print(f"\nassistant > ", end="", flush=True)
+        
+        @override
+        def on_text_delta(self, delta, snapshot):
+            print(delta.value, end="", flush=True)
+        
+        def on_tool_call_created(self, tool_call):
+            print(f"\nassistant > {tool_call.type}\n", flush=True)
+    
+        def on_tool_call_delta(self, delta, snapshot):
+            if delta.type == 'code_interpreter':
+                if delta.code_interpreter.input:
+                    print(delta.code_interpreter.input, end="", flush=True)
+                if delta.code_interpreter.outputs:
+                    print(f"\n\noutput >", flush=True)
+                for output in delta.code_interpreter.outputs:
+                    if output.type == "logs":
+                        print(f"\n{output.logs}", flush=True)
+ 
+    # Then, we use the `stream` SDK helper 
+    # with the `EventHandler` class to create the Run 
+    # and stream the response.
+    
+    with client.beta.threads.runs.stream(
+        thread_id=thread.id,
+        assistant_id=assistant.id,
+        event_handler=EventHandler(),
+    ) as stream:
+        stream.until_done()
 
 if __name__ == "__main__":
     print("\nGPT assistant is ready to chat with you! Type /bye to exit. \n")
@@ -53,5 +72,5 @@ if __name__ == "__main__":
         user_input = input(">> ")
         if user_input == "/bye":
             break
-        response = ask_assistant(user_input)
-        print("\n" + response + "\n")
+        ask_assistant(user_input)
+        print("\n")
