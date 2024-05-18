@@ -1,4 +1,7 @@
 # GPT-desktop-app
+
+**Update 5/17/2024**: now use Assistant API v2, with streaming
+
 Create a desktop executable that converse with you using GPT:
 - Assumes a python environment with ```openai``` package installed and OPENAI_API_KEY registered;
 - Replace ```assistant_id``` with your own assistant's asset ID;
